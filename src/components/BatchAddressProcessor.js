@@ -21,7 +21,7 @@ function BatchAddressProcessor({ onBatchResult }) {
       .replace(/\s*\([^)]*\).*$/gi, '') // "(유림스텐), 2층" 등 제거
       .trim();
 
-    // 특별시/광역시/도 표준화
+    // 특별시/광역시/도 표준화 (2025년 기준으로 업데이트)
     cleaned = cleaned
       .replace(/^서울시/g, '서울')
       .replace(/^서울특별시/g, '서울')
@@ -38,14 +38,23 @@ function BatchAddressProcessor({ onBatchResult }) {
       .replace(/^울산시/g, '울산')
       .replace(/^울산광역시/g, '울산')
       .replace(/^경기도/g, '경기')
-      .replace(/^강원도/g, '강원특별자치도')
-      .replace(/^충북/g, '충청북도')
-      .replace(/^충남/g, '충청남도')
-      .replace(/^전북/g, '전라북도')
-      .replace(/^전남/g, '전라남도')
-      .replace(/^경북/g, '경상북도')
-      .replace(/^경남/g, '경상남도')
-      .replace(/^제주도/g, '제주특별자치도');
+      .replace(/^강원도/g, '강원')
+      .replace(/^강원특별자치도/g, '강원') // 이미 특별자치도인 경우 줄임
+      .replace(/^충북/g, '충북')
+      .replace(/^충청북도/g, '충북')
+      .replace(/^충남/g, '충남')
+      .replace(/^충청남도/g, '충남')
+      .replace(/^전북/g, '전북')
+      .replace(/^전라북도/g, '전북')
+      .replace(/^전북특별자치도/g, '전북') // 이미 특별자치도인 경우 줄임
+      .replace(/^전남/g, '전남')
+      .replace(/^전라남도/g, '전남')
+      .replace(/^경북/g, '경북')
+      .replace(/^경상북도/g, '경북')
+      .replace(/^경남/g, '경남')
+      .replace(/^경상남도/g, '경남')
+      .replace(/^제주도/g, '제주')
+      .replace(/^제주특별자치도/g, '제주'); // 이미 특별자치도인 경우 줄임
 
     return cleaned;
   };
@@ -114,7 +123,7 @@ function BatchAddressProcessor({ onBatchResult }) {
       '강원': '강원특별자치도',
       '충북': '충청북도',
       '충남': '충청남도',
-      '전북': '전라북도',
+      '전북': '전북특별자치도',
       '전남': '전라남도',
       '경북': '경상북도',
       '경남': '경상남도',
@@ -124,26 +133,149 @@ function BatchAddressProcessor({ onBatchResult }) {
     return cityMapping[shortName] || shortName;
   };
 
-  // 주소 유사도 검증 함수
-  const validateAddressMatch = (originalAddress, foundAddress) => {
-    if (!foundAddress) return false;
+  // 시도명 매핑 테이블
+  const sidoMapping = {
+    '서울': ['서울특별시', '서울시', '서울'],
+    '부산': ['부산광역시', '부산시', '부산'],
+    '대구': ['대구광역시', '대구시', '대구'],
+    '인천': ['인천광역시', '인천시', '인천'],
+    '광주': ['광주광역시', '광주시', '광주'],
+    '대전': ['대전광역시', '대전시', '대전'],
+    '울산': ['울산광역시', '울산시', '울산'],
+    '세종': ['세종특별자치시', '세종시', '세종'],
+    '경기': ['경기도', '경기'],
+    '강원': ['강원특별자치도', '강원도', '강원'],
+    '충북': ['충청북도', '충북'],
+    '충남': ['충청남도', '충남'],
+    '전북': ['전북특별자치도', '전라북도', '전북'],
+    '전남': ['전라남도', '전남'],
+    '경북': ['경상북도', '경북'],
+    '경남': ['경상남도', '경남'],
+    '제주': ['제주특별자치도', '제주도', '제주']
+  };
+
+  // 시도명이 매칭되는지 확인하는 함수
+  const isSidoMatched = (inputSido, foundSido) => {
+    if (!inputSido || !foundSido) return false;
     
-    const original = originalAddress.replace(/[0-9\-,\s]/g, '').toLowerCase();
-    const found = foundAddress.replace(/[0-9\-,\s]/g, '').toLowerCase();
+    // 정확히 일치하는 경우
+    if (inputSido === foundSido) return true;
     
-    // 시도, 시군구가 포함되어 있는지 확인
-    const originalParts = originalAddress.split(/[\s,]+/);
-    const sido = originalParts[0] || '';
-    const sigungu = originalParts[1] || '';
-    
-    if (sido && !foundAddress.includes(sido)) {
-      return false;
+    // 매핑 테이블에서 확인
+    for (const [key, values] of Object.entries(sidoMapping)) {
+      if (values.includes(inputSido) && values.includes(foundSido)) {
+        return true;
+      }
     }
-    if (sigungu && !foundAddress.includes(sigungu)) {
-      return false;
+    
+    return false;
+  };
+
+  // 주소 유사도 검증 함수 (개선된 버전)
+  const validateAddressMatch = (originalAddress, foundLotAddress, foundRoadAddress) => {
+    if (!foundLotAddress && !foundRoadAddress) return 'none';
+    
+    // 원본 주소를 파싱
+    const originalParts = originalAddress.replace(/,/g, ' ').split(/\s+/).filter(part => part.length > 0);
+    const inputSido = originalParts[0] || '';
+    const inputSigungu = originalParts[1] || '';
+    const inputDong = originalParts[2] || '';
+    
+    console.log('신뢰도 검증:', {
+      original: originalAddress,
+      parsed: { inputSido, inputSigungu, inputDong },
+      foundLot: foundLotAddress,
+      foundRoad: foundRoadAddress
+    });
+    
+    // 검색된 주소들을 확인 (지번주소와 도로명주소 모두)
+    const addressesToCheck = [foundLotAddress, foundRoadAddress].filter(addr => addr);
+    
+    let bestMatch = 'low';
+    
+    for (const foundAddress of addressesToCheck) {
+      if (!foundAddress) continue;
+      
+      const foundParts = foundAddress.split(/\s+/);
+      const foundSido = foundParts[0] || '';
+      const foundSigungu = foundParts[1] || '';
+      
+      let matchScore = 0;
+      let totalChecks = 0;
+      
+      // 1. 시도 매칭 확인 (가중치: 높음)
+      if (inputSido) {
+        totalChecks += 3;
+        if (isSidoMatched(inputSido, foundSido)) {
+          matchScore += 3;
+          console.log('시도 매칭 성공:', inputSido, '↔', foundSido);
+        } else {
+          console.log('시도 매칭 실패:', inputSido, '↔', foundSido);
+        }
+      }
+      
+      // 2. 시군구 매칭 확인 (가중치: 높음)
+      if (inputSigungu) {
+        totalChecks += 3;
+        if (foundAddress.includes(inputSigungu) || foundSigungu.includes(inputSigungu)) {
+          matchScore += 3;
+          console.log('시군구 매칭 성공:', inputSigungu);
+        } else {
+          console.log('시군구 매칭 실패:', inputSigungu, 'in', foundAddress);
+        }
+      }
+      
+      // 3. 동/읍/면 매칭 확인 (가중치: 중간)
+      if (inputDong && inputDong.length > 1) {
+        totalChecks += 2;
+        // 동명에서 숫자 제거하여 비교 (예: 역삼1동 → 역삼동)
+        const cleanInputDong = inputDong.replace(/\d+/g, '');
+        if (foundAddress.includes(inputDong) || foundAddress.includes(cleanInputDong)) {
+          matchScore += 2;
+          console.log('동 매칭 성공:', inputDong);
+        } else {
+          console.log('동 매칭 실패:', inputDong, 'in', foundAddress);
+        }
+      }
+      
+      // 4. 번지수 일부 매칭 (가중치: 낮음)
+      const inputNumbers = originalAddress.match(/\d+/g) || [];
+      const foundNumbers = foundAddress.match(/\d+/g) || [];
+      if (inputNumbers.length > 0) {
+        totalChecks += 1;
+        const hasCommonNumber = inputNumbers.some(num => foundNumbers.includes(num));
+        if (hasCommonNumber) {
+          matchScore += 1;
+          console.log('번지 매칭 성공');
+        }
+      }
+      
+      // 매칭 점수 계산
+      const matchRatio = totalChecks > 0 ? matchScore / totalChecks : 0;
+      console.log('매칭 점수:', matchScore, '/', totalChecks, '=', matchRatio);
+      
+      let currentMatch;
+      if (matchRatio >= 0.8) {
+        currentMatch = 'high';
+      } else if (matchRatio >= 0.5) {
+        currentMatch = 'medium';
+      } else if (matchRatio > 0) {
+        currentMatch = 'low';
+      } else {
+        currentMatch = 'none';
+      }
+      
+      // 가장 높은 신뢰도를 선택
+      if (currentMatch === 'high') {
+        bestMatch = 'high';
+        break; // high를 찾으면 더 이상 검사하지 않음
+      } else if (currentMatch === 'medium' && bestMatch !== 'high') {
+        bestMatch = 'medium';
+      }
     }
     
-    return true;
+    console.log('최종 신뢰도:', bestMatch);
+    return bestMatch;
   };
 
   // 카카오 Maps API로 주소 검색 (도로명 우선 - 2단계 검색)
@@ -230,22 +362,11 @@ function BatchAddressProcessor({ onBatchResult }) {
 
   // 검색 결과를 처리하는 공통 함수
   const processResult = (data, originalAddress, resolve) => {
-    // 주소 매칭 검증
+    // 주소 매칭 검증 (개선된 버전)
     const foundLotAddress = data.address?.address_name || '';
     const foundRoadAddress = data.road_address?.address_name || '';
     
-    let matchConfidence = 'low';
-    if (validateAddressMatch(originalAddress, foundLotAddress) || 
-        validateAddressMatch(originalAddress, foundRoadAddress)) {
-      matchConfidence = 'high';
-    } else {
-      matchConfidence = 'low';
-      console.warn('일괄 검색 - 주소 불일치 감지:', {
-        original: originalAddress,
-        found_lot: foundLotAddress,
-        found_road: foundRoadAddress
-      });
-    }
+    const matchConfidence = validateAddressMatch(originalAddress, foundLotAddress, foundRoadAddress);
     
     // 우편번호는 road_address 또는 address에서 가져올 수 있음
     let zipcode = '';
@@ -333,7 +454,7 @@ function BatchAddressProcessor({ onBatchResult }) {
       city: getFullCityName(data.sido),
       district: data.sigungu,
       address_code: data.bcode,
-      match_confidence: 'high'
+      match_confidence: 'high' // 우편번호 API를 통한 검색은 항상 높은 신뢰도
     };
 
     // Maps API로 좌표 정보 가져오기 (단일 검색과 동일한 방식)

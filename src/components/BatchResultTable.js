@@ -14,6 +14,7 @@ function BatchResultTable({ results, onClearResults }) {
   });
 
   const lowConfidenceCount = results.filter(r => r.match_confidence === 'low').length;
+  const mediumConfidenceCount = results.filter(r => r.match_confidence === 'medium').length;
   const highConfidenceCount = results.filter(r => r.match_confidence === 'high').length;
   const noneConfidenceCount = results.filter(r => r.match_confidence === 'none').length;
 
@@ -70,7 +71,7 @@ function BatchResultTable({ results, onClearResults }) {
         <h3 className="results-title">
           📊 처리 결과 ({results.length}개)
           <span className="confidence-summary">
-            - 높음: {highConfidenceCount}, 낮음: {lowConfidenceCount}, 없음: {noneConfidenceCount}
+            - 높음: {highConfidenceCount}, 보통: {mediumConfidenceCount}, 낮음: {lowConfidenceCount}, 없음: {noneConfidenceCount}
           </span>
         </h3>
         <div className="results-controls">
@@ -79,6 +80,7 @@ function BatchResultTable({ results, onClearResults }) {
             <select value={filter} onChange={(e) => setFilter(e.target.value)} className="filter-select">
               <option value="all">전체 ({results.length})</option>
               <option value="high">신뢰도 높음 ({highConfidenceCount})</option>
+              <option value="medium">신뢰도 보통 ({mediumConfidenceCount})</option>
               <option value="low">신뢰도 낮음 ({lowConfidenceCount})</option>
               <option value="none">검색 실패 ({noneConfidenceCount})</option>
             </select>
@@ -116,7 +118,7 @@ function BatchResultTable({ results, onClearResults }) {
           </thead>
           <tbody>
             {filteredResults.map((result, index) => (
-              <tr key={index} className={result.match_confidence === 'low' ? 'low-confidence' : ''}>
+              <tr key={index} className={result.match_confidence === 'low' || result.match_confidence === 'none' ? 'low-confidence' : ''}>
                 <td>{index + 1}</td>
                 <td className="original-address">{result.original_address}</td>
                 <td>{result.lot_address}</td>
@@ -130,6 +132,7 @@ function BatchResultTable({ results, onClearResults }) {
                 <td>
                   <span className={`confidence-badge ${result.match_confidence}`}>
                     {result.match_confidence === 'high' ? '높음' : 
+                     result.match_confidence === 'medium' ? '보통' :
                      result.match_confidence === 'low' ? '낮음' : '없음'}
                   </span>
                 </td>
